@@ -1,12 +1,20 @@
 ## dify-mcp
 
-**Author:** craftslab
-
+**Author:** [craftslab](https://github.com/craftslab)
 **Version:** 0.0.1
-
 **Type:** agent-strategy
+**Github Repo:** [dify-mcp](https://github.com/ai-mcpx/dify-mcp)
+**Github Issues:** [issues](https://github.com/ai-mcpx/dify-mcp/issues)
+
+
+---
+
 
 ### Description
+
+
+---
+
 
 ### Reference
 
