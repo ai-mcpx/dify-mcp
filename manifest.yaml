@@ -1,0 +1,43 @@
+version: 0.0.1
+type: plugin
+author: craftslab
+name: dify-mcp
+label:
+  en_US: dify-mcp
+  ja_JP: dify-mcp
+  zh_Hans: dify-mcp
+  pt_BR: dify-mcp
+description:
+  en_US: Dify MCP Plugin
+  ja_JP: Dify MCP Plugin
+  zh_Hans: Dify MCP Plugin
+  pt_BR: Dify MCP Plugin
+icon: icon.svg
+resource:
+  memory: 268435456
+  permission:
+    tool:
+      enabled: true
+    model:
+      enabled: true
+      llm: true
+      text_embedding: false
+      rerank: false
+      tts: false
+      speech2text: false
+      moderation: false
+plugins:
+  agent_strategies:
+    - provider/dify-mcp.yaml
+meta:
+  version: 0.0.1
+  arch:
+    - amd64
+    - arm64
+  runner:
+    language: python
+    version: "3.12"
+    entrypoint: main
+created_at: 2025-04-16T15:43:55.888870804+08:00
+privacy: PRIVACY.md
+verified: false

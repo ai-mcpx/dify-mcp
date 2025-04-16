@@ -1,0 +1,13 @@
+identity:
+  author: craftslab
+  name: dify-mcp
+  label:
+    en_US: DifyMcp
+  description:
+    en_US: DifyMcp
+  icon: icon.svg
+strategies:
+  - strategies/dify-mcp.yaml
+extra:
+  python:
+    source: provider/dify-mcp.py
