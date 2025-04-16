@@ -12,6 +12,25 @@
 
 ### Description
 
+#### Configuration
+
+```json
+{
+  "server1": {
+    "url": "http://127.0.0.1:8000",
+    "headers": {},
+    "timeout": 60,
+    "sse_read_timeout": 300
+  },
+  "server2": {
+    "url": "http://127.0.0.1:8001/sse",
+    "headers": {},
+    "timeout": 60,
+    "sse_read_timeout": 300
+  }
+}
+```
+
 
 ---
 
