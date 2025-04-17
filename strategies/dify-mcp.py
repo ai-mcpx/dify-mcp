@@ -1,4 +1,5 @@
 import json
+import pydantic
 import re
 import time
 
@@ -52,16 +53,12 @@ class DifyMcpAgentStrategy(AgentStrategy):
         return SystemPromptMessage(content=self.instruction)
 
     def _invoke(self, parameters: dict[str, Any]) -> Generator[AgentInvokeMessage]:
-        """
-        Run FunctionCall agent application
-        """
-
         try:
             fc_params = FunctionCallingParams(**parameters)
         except pydantic.ValidationError as e:
             raise ValueError(f"Invalid parameters: {e!s}") from e
 
-        # init prompt messages
+        # Init prompt messages
         query = fc_params.query
         self.query = query
         self.instruction = fc_params.instruction
@@ -69,7 +66,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
         history_prompt_messages.insert(0, self._system_prompt_message)
         history_prompt_messages.append(self._user_prompt_message)
 
-        # convert tool messages
+        # Convert tool messages
         tools = fc_params.tools
         tool_instances = {tool.identity.name: tool for tool in tools} if tools else {}
 
@@ -88,11 +85,11 @@ class DifyMcpAgentStrategy(AgentStrategy):
             mcp_tools = mcp_clients.fetch_tools()
             mcp_tool_instances = {tool.get("name"): tool for tool in mcp_tools} if mcp_tools else {}
 
-        # convert tools into ModelRuntime Tool format
+        # Convert tools into ModelRuntime Tool format
         prompt_messages_tools = self._init_prompt_tools(tools)
         prompt_messages_tools.extend(self._init_prompt_mcp_tools(mcp_tools))
 
-        # init model parameters
+        # Init model parameters
         stream = (
             ModelFeature.STREAM_TOOL_CALL in fc_params.model.entity.features
             if fc_params.model.entity and fc_params.model.entity.features
@@ -101,7 +98,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
         model = fc_params.model
         stop = fc_params.model.completion_params.get("stop", []) if fc_params.model.completion_params else []
 
-        # init function calling state
+        # Init function calling state
         iteration_step = 1
         max_iteration_steps = fc_params.maximum_iterations
         current_thoughts: list[PromptMessage] = []
@@ -110,7 +107,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
         final_answer = ""
 
         while function_call_state and iteration_step <= max_iteration_steps:
-            # start a new round
+            # Start a new round
             function_call_state = False
             round_started_at = time.perf_counter()
             round_log = self.create_log_message(
@@ -122,20 +119,18 @@ class DifyMcpAgentStrategy(AgentStrategy):
                 status=ToolInvokeMessage.LogMessage.LogStatus.START,
             )
             yield round_log
-
             # If max_iteration_steps=1, need to execute tool calls
             if iteration_step == max_iteration_steps and max_iteration_steps > 1:
-                # the last iteration, remove all tools
+                # The last iteration, remove all tools
                 prompt_messages_tools = []
-
-            # recalc llm max tokens
+            # Recalc llm max tokens
             prompt_messages = self._organize_prompt_messages(
                 history_prompt_messages=history_prompt_messages,
                 current_thoughts=current_thoughts,
             )
             if model.entity and model.completion_params:
                 self.recalc_llm_max_tokens(model.entity, prompt_messages, model.completion_params)
-            # invoke model
+            # Invoke model
             model_started_at = time.perf_counter()
             model_log = self.create_log_message(
                 label=f"{model.model} Thought",
@@ -156,25 +151,19 @@ class DifyMcpAgentStrategy(AgentStrategy):
                 stream=stream,
                 tools=prompt_messages_tools,
             )
-
             tool_calls: list[tuple[str, str, dict[str, Any]]] = []
-
-            # save full response
+            # Save full response
             response = ""
-
-            # save tool call names and inputs
+            # Save tool call names and inputs
             tool_call_names = ""
-
             current_llm_usage = None
-
             if isinstance(chunks, Generator):
                 for chunk in chunks:
-                    # check if there is any tool call
+                    # Check if there is any tool call
                     if self.check_tool_calls(chunk):
                         function_call_state = True
                         tool_calls.extend(self.extract_tool_calls(chunk) or [])
                         tool_call_names = ";".join([tool_call[1] for tool_call in tool_calls])
-
                     if chunk.delta.message and chunk.delta.message.content:
                         if isinstance(chunk.delta.message.content, list):
                             for content in chunk.delta.message.content:
@@ -185,31 +174,26 @@ class DifyMcpAgentStrategy(AgentStrategy):
                             response += str(chunk.delta.message.content)
                             if not function_call_state or iteration_step == max_iteration_steps:
                                 yield self.create_text_message(str(chunk.delta.message.content))
-
                     if chunk.delta.usage:
                         self.increase_usage(llm_usage, chunk.delta.usage)
                         current_llm_usage = chunk.delta.usage
-
             else:
                 result = chunks
                 result = cast(LLMResult, result)
-                # check if there is any tool call
+                # Check if there is any tool call
                 if self.check_blocking_tool_calls(result):
                     function_call_state = True
                     tool_calls.extend(self.extract_blocking_tool_calls(result) or [])
                     tool_call_names = ";".join([tool_call[1] for tool_call in tool_calls])
-
                 if result.usage:
                     self.increase_usage(llm_usage, result.usage)
                     current_llm_usage = result.usage
-
                 if result.message and result.message.content:
                     if isinstance(result.message.content, list):
                         for content in result.message.content:
                             response += content.data
                     else:
                         response += str(result.message.content)
-
                 if not result.message.content:
                     result.message.content = ""
                 if isinstance(result.message.content, str):
@@ -217,7 +201,6 @@ class DifyMcpAgentStrategy(AgentStrategy):
                 elif isinstance(result.message.content, list):
                     for content in result.message.content:
                         yield self.create_text_message(content.data)
-
             yield self.finish_log_message(
                 log=model_log,
                 data={
@@ -250,12 +233,9 @@ class DifyMcpAgentStrategy(AgentStrategy):
                 ]
             else:
                 assistant_message.content = response
-
             current_thoughts.append(assistant_message)
-
             final_answer += response + "\n"
-
-            # call tools
+            # Call tools
             tool_responses = []
             for tool_call_id, tool_call_name, tool_call_args in tool_calls:
                 tool_instance = tool_instances.get(tool_call_name)
@@ -281,18 +261,17 @@ class DifyMcpAgentStrategy(AgentStrategy):
                         "meta": ToolInvokeMeta.error_instance(f"there is not a tool named {tool_call_name}").to_dict(),
                     }
                 else:
-
                     tool_invoke_parameters = {}
                     try:
                         if mcp_tool_instance:
-                            # invoke MCP tool
+                            # Invoke MCP tool
                             tool_invoke_parameters = tool_call_args
                             result = mcp_clients.execute_tool(
                                 tool_name=tool_call_name,
                                 tool_args=tool_invoke_parameters,
                             )
                         else:
-                            # invoke tool
+                            # Invoke tool
                             tool_invoke_parameters = {**tool_instance.runtime_parameters, **tool_call_args}
                             tool_invoke_responses = self.session.tool.invoke(
                                 provider_type=ToolProviderType(tool_instance.provider_type),
@@ -333,7 +312,6 @@ class DifyMcpAgentStrategy(AgentStrategy):
                         "tool_call_input": tool_invoke_parameters,
                         "tool_response": result,
                     }
-
                 yield self.finish_log_message(
                     log=tool_call_log,
                     data={
@@ -355,8 +333,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
                             name=tool_call_name,
                         )
                     )
-
-            # update prompt tool
+            # Update prompt tool
             for prompt_tool in prompt_messages_tools:
                 if prompt_tool.name in tool_instances:
                     self.update_prompt_message_tool(tool_instances[prompt_tool.name], prompt_tool)
@@ -379,7 +356,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
             )
             iteration_step += 1
 
-        # All MCP Client close
+        # All MCP Client closed
         if mcp_clients:
             mcp_clients.close()
 
@@ -394,30 +371,18 @@ class DifyMcpAgentStrategy(AgentStrategy):
         )
 
     def check_tool_calls(self, llm_result_chunk: LLMResultChunk) -> bool:
-        """
-        Check if there is any tool call in llm result chunk
-        """
         return bool(llm_result_chunk.delta.message.tool_calls)
 
     def check_blocking_tool_calls(self, llm_result: LLMResult) -> bool:
-        """
-        Check if there is any blocking tool call in llm result
-        """
         return bool(llm_result.message.tool_calls)
 
     def extract_tool_calls(self, llm_result_chunk: LLMResultChunk) -> list[tuple[str, str, dict[str, Any]]]:
-        """
-        Extract tool calls from llm result chunk
-
-        Returns:
-            List[Tuple[str, str, Dict[str, Any]]]: [(tool_call_id, tool_call_name, tool_call_args)]
-        """
         tool_calls = []
+
         for prompt_message in llm_result_chunk.delta.message.tool_calls:
             args = {}
             if prompt_message.function.arguments != "":
                 args = json.loads(prompt_message.function.arguments)
-
             tool_calls.append(
                 (
                     prompt_message.id,
@@ -429,18 +394,12 @@ class DifyMcpAgentStrategy(AgentStrategy):
         return tool_calls
 
     def extract_blocking_tool_calls(self, llm_result: LLMResult) -> list[tuple[str, str, dict[str, Any]]]:
-        """
-        Extract blocking tool calls from llm result
-
-        Returns:
-            List[Tuple[str, str, Dict[str, Any]]]: [(tool_call_id, tool_call_name, tool_call_args)]
-        """
         tool_calls = []
+
         for prompt_message in llm_result.message.tool_calls:
             args = {}
             if prompt_message.function.arguments != "":
                 args = json.loads(prompt_message.function.arguments)
-
             tool_calls.append(
                 (
                     prompt_message.id,
@@ -452,9 +411,6 @@ class DifyMcpAgentStrategy(AgentStrategy):
         return tool_calls
 
     def _init_system_message(self, prompt_template: str, prompt_messages: list[PromptMessage]) -> list[PromptMessage]:
-        """
-        Initialize system message
-        """
         if not prompt_messages and prompt_template:
             return [
                 SystemPromptMessage(content=prompt_template),
@@ -466,10 +422,6 @@ class DifyMcpAgentStrategy(AgentStrategy):
         return prompt_messages or []
 
     def _clear_user_prompt_image_messages(self, prompt_messages: list[PromptMessage]) -> list[PromptMessage]:
-        """
-        As for now, gpt supports both fc and vision at the first iteration.
-        We need to remove the image messages from the prompt messages at the first iteration.
-        """
         prompt_messages = deepcopy(prompt_messages)
 
         for prompt_message in prompt_messages:
@@ -496,16 +448,15 @@ class DifyMcpAgentStrategy(AgentStrategy):
             *history_prompt_messages,
             *current_thoughts,
         ]
+
         if len(current_thoughts) != 0:
-            # clear messages after the first iteration
+            # Clear messages after the first iteration
             prompt_messages = self._clear_user_prompt_image_messages(prompt_messages)
+
         return prompt_messages
 
     @staticmethod
     def _init_prompt_mcp_tools(mcp_tools: list[dict]) -> list[PromptMessageTool]:
-        """
-        Initialize prompt message MCP tools
-        """
         prompt_messages_tools = []
 
         for tool in mcp_tools:
@@ -516,7 +467,7 @@ class DifyMcpAgentStrategy(AgentStrategy):
                 parameters["required"] = []
             prompt_message = PromptMessageTool(
                 name=tool.get("name"),
-                description=tool.get("description", None),
+                description=tool.get("description", ""),
                 parameters=parameters,
             )
             prompt_messages_tools.append(prompt_message)
